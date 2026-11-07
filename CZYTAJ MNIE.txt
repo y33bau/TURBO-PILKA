@@ -1,0 +1,24 @@
+﻿TURBO PIŁKA – gra Olafa
+========================
+
+JAK URUCHOMIĆ (Windows):
+1. Rozpakuj cały folder (np. na Pulpit) – nie uruchamiaj ze środka ZIP-a.
+2. Kliknij dwa razy „URUCHOM GRE.bat”.
+3. Otworzy się czarne okienko i przeglądarka z grą.
+   Okienka nie zamykaj w trakcie gry – jego zamknięcie wyłącza grę.
+
+Jeśli Windows zapyta o zgodę (SmartScreen / zapora): „Więcej informacji” → „Uruchom mimo to”.
+Serwer działa tylko na tym komputerze (localhost), nic nie jest wysyłane do internetu.
+
+POTRZEBNY INTERNET:
+Biblioteka 3D (Three.js), efekty obrazu i czcionka pobierają się z sieci przy starcie.
+
+GWIAZDKI I GARAŻ:
+Zapisują się w przeglądarce dla adresu localhost – osobno od wersji z claude.ai.
+
+STEROWANIE:
+Pad: gałka = jazda, A = skok (2× w powietrzu = salto), B/X/RB = turbo, LB = klakson, Y = kamera na piłkę, START = pauza.
+Klawiatura: gracz 1 – W A S D, spacja, lewy Shift, H = klakson; gracz 2 – strzałki, Enter, prawy Shift, / = klakson; Esc = pauza.
+
+MODELE:
+Auta, stadion i kibice: Kenney (www.kenney.nl) – licencja CC0 (models/LICENSE-kenney.txt).
