@@ -5,6 +5,7 @@ Gra w stylu Rocket League zrobiona dla Olafa (5 lat): auta grają w piłkę na s
 ## Jak zagrać
 
 - **W przeglądarce:** otwórz stronę gry z GitHub Pages (link w opisie repozytorium).
+- **Na telefonie / tablecie z Androidem:** otwórz stronę gry w Chrome i stuknij **📲 ZAINSTALUJ** w menu gry (albo ⋮ → *Zainstaluj aplikację* / *Dodaj do ekranu głównego*). Gra pojawi się jako ikona, uruchamia się na pełnym ekranie i działa też bez internetu.
 - **Na komputerze z Windows:** pobierz repozytorium jako ZIP (zielony przycisk **Code → Download ZIP**), rozpakuj i uruchom `URUCHOM GRE.bat`.
 
 Najlepiej działa w Chrome albo Edge. W Edge lektor ma najładniejszy, naturalny głos.
