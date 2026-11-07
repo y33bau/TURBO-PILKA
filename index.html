@@ -114,6 +114,12 @@ html,body{font-family:'Exo 2',"Trebuchet MS",system-ui,sans-serif;}
 .gcard.afford .gs{background:linear-gradient(135deg,#ff9f1c,#ff5e3a);color:#fff;}
 .gcard.locked .th img{filter:saturate(.7) brightness(.8);}
 .gfoot{font-size:11px;opacity:.6;margin-top:16px;}
+/* dotyk: przewijanie palcem, brak podświetleń i zoomu, wyraźne wciśnięcie */
+#screen,#garage .gr{-webkit-overflow-scrolling:touch;overscroll-behavior:contain;touch-action:pan-y;}
+#screen,#garage{-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;}
+.act,.chip,.btn,.row,.gcard,.gtab,.gdone,.gbtn,.gopen,.starchip{touch-action:manipulation;}
+.act.tapping,.chip.tapping,.btn.tapping,.gcard.tapping,.gtab.tapping,.gdone.tapping,.gopen.tapping,.starchip.tapping{transform:scale(.96);filter:brightness(1.15);transition:transform .06s;}
+@media (pointer:coarse){.row .ar{display:inline-flex;align-items:center;justify-content:center;min-width:44px;min-height:44px;font-size:20px}.row{min-height:52px}.gtab{padding:11px 15px;font-size:14px}.gdone{padding:13px 22px}.gbtn{padding:12px 16px}#garage .gtabs{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;touch-action:pan-x;scrollbar-width:none}#garage .gtabs::-webkit-scrollbar{display:none}.gdone{position:sticky;right:0;flex:0 0 auto}}
 .mcard{position:relative;overflow:hidden;width:min(400px,100%);box-sizing:border-box;padding:14px 18px 14px;border-radius:18px;background:linear-gradient(140deg,rgba(28,46,98,.94),rgba(48,24,86,.94));border:2px solid rgba(255,181,71,.75);box-shadow:0 18px 40px rgba(0,0,0,.4),inset 0 1px 0 rgba(255,255,255,.18);margin-bottom:10px;}
 .mcard::after{content:'';position:absolute;inset:-40%;background:linear-gradient(115deg,transparent 40%,rgba(255,255,255,.16) 48%,rgba(140,220,255,.12) 52%,transparent 60%);animation:holo 4.5s ease-in-out infinite;pointer-events:none;}
 @keyframes holo{0%{transform:translateX(-35%)}60%,100%{transform:translateX(35%)}}
@@ -2599,6 +2605,24 @@ function drawHUD() {
 }
 
 /* ===================== MENU / UI (pad, klawiatura, dotyk) ===================== */
+// „stuknięcie”: działa dopiero po puszczeniu palca i tylko gdy palec prawie się nie ruszył –
+// dzięki temu przewijanie menu palcem nie wybiera przypadkiem kafelków
+function onTap(el, fn) {
+  let st = null;
+  el.addEventListener('pointerdown', e => {
+    if (e.button > 0) return;
+    st = { x: e.clientX, y: e.clientY, t: performance.now(), id: e.pointerId };
+    if (e.pointerType === 'mouse') e.preventDefault(); else { initAudio(); el.classList.add('tapping'); }
+  });
+  el.addEventListener('pointerup', e => {
+    el.classList.remove('tapping');
+    if (!st || e.pointerId !== st.id) return;
+    const ok = Math.hypot(e.clientX - st.x, e.clientY - st.y) < 16 && performance.now() - st.t < 1200; st = null;
+    if (ok) { e.preventDefault(); e.stopPropagation(); if (e.pointerType !== 'mouse') touchSeen = true; fn(e); }
+  });
+  const clear = () => { st = null; el.classList.remove('tapping'); };
+  el.addEventListener('pointercancel', clear); el.addEventListener('pointerleave', clear);
+}
 const screenEl = document.getElementById('screen');
 let ui = null;
 function openScreen(title, subtitle, items, opts) {
@@ -2632,8 +2656,8 @@ function openScreen(title, subtitle, items, opts) {
       row.innerHTML = '<span class="lab"></span><span class="ctl"><b class="ar" data-d="-1">◀</b><span class="val"></span><b class="ar" data-d="1">▶</b></span>';
       row.querySelector('.lab').textContent = it.gar ? GAR[it.gar].label : LABELS[it.opt];
     } else { row.className = 'btn' + (it.cls ? ' ' + it.cls : ''); row.textContent = it.label; if (it.badge) { const b = document.createElement('span'); b.className = 'badge'; b.textContent = it.badge; row.appendChild(b); } }
-    row.addEventListener('pointerdown', e => {
-      e.preventDefault(); e.stopPropagation(); initAudio(); if (!ui) return; ui.focus = i;
+    onTap(row, e => {
+      initAudio(); if (!ui) return; ui.focus = i;
       if (it.acts) { const a = e.target.closest && e.target.closest('.act'); if (a) { it.sub = +a.dataset.k; sfx.click(); it.acts[it.sub].press(); } return; }
       if (it.chips) { const ch = e.target.closest && e.target.closest('.chip'); if (ch) { const k = +ch.dataset.k, n = OPTS[it.opt].length; changeOpt(it, (k - set[it.opt] + n) % n || n); } }
       else if (it.gar) { const d = e.target && e.target.dataset ? +e.target.dataset.d : 0; if (d) garChange(it.gar, d); else garPress(it.gar); }
@@ -3153,8 +3177,8 @@ function renderGarage() {
   const cur = GAR[gTab].items[gview[gTab]];
   updateCard();
   gTabs.innerHTML = '';
-  for (const k of GAR_CATS) { const t = document.createElement('div'); t.className = 'gtab' + (k === gTab ? ' on' : ''); t.textContent = TAB_NAMES[k]; t.onpointerdown = e => { e.preventDefault(); initAudio(); garTab(k); }; gTabs.appendChild(t); }
-  const done = document.createElement('div'); done.className = 'gdone'; done.textContent = 'GOTOWE ✓'; done.onpointerdown = e => { e.preventDefault(); closeGarage(); }; gTabs.appendChild(done);
+  for (const k of GAR_CATS) { const t = document.createElement('div'); t.className = 'gtab' + (k === gTab ? ' on' : ''); t.textContent = TAB_NAMES[k]; onTap(t, e => { initAudio(); garTab(k); }); gTabs.appendChild(t); }
+  const done = document.createElement('div'); done.className = 'gdone'; done.textContent = 'GOTOWE ✓'; onTap(done, e => { closeGarage(); }); gTabs.appendChild(done);
   gGrid.innerHTML = '';
   const job = ++thumbJob, pending = [];
   gOrd().forEach((i, pos) => {
@@ -3166,7 +3190,7 @@ function renderGarage() {
     c.querySelector('.gn').textContent = gItemName(i);
     c.querySelector('.gp').textContent = '';
     c.querySelector('.gs').textContent = fixedPaint ? 'Oryginalne kolory auta' : sel ? '✓ WYBRANE' : 'WYBIERZ';
-    c.onpointerdown = e => { e.preventDefault(); initAudio(); garFocus(pos); };
+    onTap(c, e => { initAudio(); garFocus(pos); });
     gGrid.appendChild(c); pending.push([c, i]);
   });
   const step = () => {   // miniatury po kolei, żeby nie przycinało
@@ -3218,10 +3242,10 @@ function closeGarage() {
   if (previewMesh) scene.remove(previewMesh.g); previewMesh = null; gview = null; thumbJob++;
   setShowcase(false); garEl.style.display = 'none'; ui = null; state = 'menu'; openMainMenu();
 }
-document.getElementById('gAuto').onpointerdown = e => { e.preventDefault(); autoRot = !autoRot; e.target.textContent = autoRot ? 'Wyłącz obrót automatyczny' : 'Włącz obrót automatyczny'; };
+onTap(document.getElementById('gAuto'), e => { autoRot = !autoRot; e.target.textContent = autoRot ? 'Wyłącz obrót automatyczny' : 'Włącz obrót automatyczny'; });
 { // obracanie auta przeciąganiem
   let drag = null;
-  document.getElementById('gOpen').onpointerdown = e => { e.preventDefault(); initAudio(); openUnbox(); };
+  onTap(document.getElementById('gOpen'), e => { initAudio(); openUnbox(); });
   renderer.domElement.addEventListener('pointerdown', e => { if (state === 'garage' && unbox) { if (unbox.phase === 'boxed') { initAudio(); openUnbox(); } return; } if (state === 'garage') { gShow = null; drag = e.clientX; autoRot = false; document.getElementById('gAuto').textContent = 'Włącz obrót automatyczny'; } });
   window.addEventListener('pointermove', e => { if (drag !== null && state === 'garage') { previewYaw += (e.clientX - drag) * 0.01; drag = e.clientX; } });
   window.addEventListener('pointerup', () => { drag = null; });
@@ -3254,8 +3278,8 @@ function openMainMenu(focus) {
   });
   if (focus) { ui.focus = Math.min(focus, ui.items.length - 1); refreshUI(); }
   updatePlayTile();
-  { const vb = document.getElementById('voiceBtn'); if (vb) vb.onpointerdown = e => { e.preventDefault(); e.stopPropagation(); initAudio();
-    set.voice = set.voice === 3 ? 0 : 3; saveSet(); vb.textContent = set.voice === 3 ? '🔇 LEKTOR' : '🗣️ LEKTOR'; if (set.voice !== 3) say('Lektor włączony'); else window.speechSynthesis && speechSynthesis.cancel(); }; }
+  { const vb = document.getElementById('voiceBtn'); if (vb) onTap(vb, e => { e.stopPropagation(); initAudio();
+    set.voice = set.voice === 3 ? 0 : 3; saveSet(); vb.textContent = set.voice === 3 ? '🔇 LEKTOR' : '🗣️ LEKTOR'; if (set.voice !== 3) say('Lektor włączony'); else window.speechSynthesis && speechSynthesis.cancel(); }); }
   // obrazki: auto Olafa na kafelku GARAŻ i scenki trybów gry (po kolei, bez przycinania)
   const myUi = ui, jobs = [];
   jobs.push(() => { const u = renderThumb(ownedLook()); const a = myUi.items[0].acts[1].el; if (u && a) { const im = document.createElement('img'); im.src = u; a.insertBefore(im, a.firstChild); } });
