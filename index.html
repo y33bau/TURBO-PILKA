@@ -237,7 +237,7 @@ const OPTS = {
   control: ['PROSTE', 'KLASYCZNE'],
   camera: ['Z GÓRY', 'ZA AUTEM', 'TELEWIZJA'],
   time: ['2 MIN', '3 MIN', '5 MIN'],
-  gfx: ['ŁADNA', 'SZYBKA', 'SUPER OSTRA'],
+  gfx: ['ŁADNA', 'SZYBKA', 'SUPER OSTRA', 'AUTOMATYCZNA'],
   sky: ['DZIEŃ', 'ZACHÓD SŁOŃCA', 'NOC'],
   color: ['KOLOR DRUŻYNY', 'CZERWONE', 'ZIELONE', 'ŻÓŁTE', 'FIOLETOWE', 'RÓŻOWE', 'CZARNE', 'BIAŁE', 'ZŁOTE'],
   music: ['GŁOŚNO', 'CICHO', 'WYŁĄCZONA'],
@@ -258,6 +258,7 @@ const CAR_COLORS = [null, 0xe53935, 0x2ecc40, 0xffd23f, 0x8e44ff, 0xff5fa2, 0x23
 const set = { mode: 0, players: 0, level: 0, control: 0, camera: 0, time: 1, gfx: 0, music: 1, sfx: 0, color: 0, sky: 0, voice: 0 };
 try { Object.assign(set, JSON.parse(localStorage.getItem('olafTurboPilka') || '{}')); } catch (e) {}
 for (const k in OPTS) set[k] = clamp((set[k] | 0), 0, OPTS[k].length - 1);
+if (!set.autoGfx) { set.autoGfx = 1; set.gfx = 3; }
 { const gi = GAME_MAP.findIndex(g => g[0] === set.players && g[1] === set.mode); set.game = gi >= 0 ? gi : 0; set.players = GAME_MAP[set.game][0]; set.mode = GAME_MAP[set.game][1]; }
 /* ===================== GARAŻ: DANE ===================== */
 const BODIES = [
@@ -1700,12 +1701,38 @@ function toMenu() {
   showMsg('', ''); openMainMenu();
 }
 let gfxApplied = -1;
+// ---- wydajność: rozpoznanie karty graficznej i automatyczna jakość ----
+let GPU = '';
+try { const gl = renderer.getContext(), ext = gl.getExtension('WEBGL_debug_renderer_info'); GPU = String(ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER)); } catch (e) {}
+const GPU_WEAK = /intel|uhd|iris|swiftshader|llvmpipe|basic render|software/i.test(GPU) && !/nvidia|geforce|radeon|rtx|gtx/i.test(GPU);
+function gpuShort() { const m = GPU.match(/(NVIDIA[^,()]*|GeForce[^,()]*|AMD[^,()]*|Radeon[^,()]*|Intel[^,()]*|Apple[^,()]*|Mali[^,()]*|Adreno[^,()]*)/i); return (m ? m[1] : GPU || 'nieznana').replace(/\s+Direct3D.*$/i, '').trim(); }
+const perf = { scale: 1, max: 1, lite: false, acc: 0, n: 0, fps: 60, low: 0, good: 0, cool: 0 };
+const GPU_WARN = GPU_WEAK ? '<div class="keys" style="color:#ffd23f">⚠️ Gra działa na słabszej grafice wbudowanej (' + gpuShort() + '). Jeśli komputer ma kartę NVIDIA: Ustawienia Windows → System → Ekran → Grafika → wybierz przeglądarkę → Wysoka wydajność, potem uruchom ją ponownie.</div>' : '';
+function lowFx() { return set.gfx === 1 || (set.gfx === 3 && perf.lite); }
+function perfTick(dt) {   // co ~1,5 s: za mało klatek -> mniejsza rozdzielczość, potem bez efektów; zapas -> ostrzej
+  if (dt <= 0 || dt > 0.25) return;
+  perf.acc += dt; perf.n++;
+  if (perf.acc < 1.5) return;
+  perf.fps = perf.n / perf.acc; perf.acc = 0; perf.n = 0;
+  if (set.gfx !== 3 || state === 'garage' || document.hidden) return;
+  if (perf.cool > 0) { perf.cool--; return; }
+  let ch = false;
+  if (perf.fps < 48) {
+    perf.good = 0;
+    if (perf.scale > 0.62) { perf.scale = Math.max(0.6, perf.scale * 0.85); ch = true; }
+    else if (!perf.lite && ++perf.low >= 2) { perf.lite = true; renderer.shadowMap.enabled = false; scene.traverse(o => { if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { m.needsUpdate = true; }); }); perf.cool = 2; }
+  } else if (perf.fps > 57 && perf.scale < perf.max) {
+    if (++perf.good >= 3) { perf.good = 0; perf.scale = Math.min(perf.max, perf.scale * 1.08); ch = true; }
+  } else perf.good = 0;
+  if (ch) { renderer.setPixelRatio(perf.scale); onResize(); perf.cool = 1; }
+}
 function applyGfx() {
   if (gfxApplied === set.gfx) return; gfxApplied = set.gfx;
-  const dpr = window.devicePixelRatio || 1, mode = set.gfx;   // 0 ładna, 1 szybka, 2 super ostra (supersampling)
-  renderer.setPixelRatio(mode === 1 ? 1 : mode === 2 ? Math.min(dpr * 1.6, 3) : Math.min(dpr, 2));
-  renderer.shadowMap.enabled = mode !== 1;
-  const sm = mode === 2 ? 4096 : 2048;
+  const dpr = window.devicePixelRatio || 1, mode = set.gfx;   // 0 ładna, 1 szybka, 2 super ostra (supersampling), 3 automatyczna
+  if (mode === 3) { perf.max = Math.min(dpr, 1.5) * (GPU_WEAK ? 0.8 : 1); perf.scale = perf.max; perf.lite = false; perf.low = 0; perf.good = 0; }
+  renderer.setPixelRatio(mode === 1 ? 1 : mode === 2 ? Math.min(dpr * 1.6, 3) : mode === 3 ? perf.scale : Math.min(dpr, 2));
+  renderer.shadowMap.enabled = !lowFx();
+  const sm = mode === 2 ? 4096 : mode === 3 && GPU_WEAK ? 1024 : 2048;
   if (sun.shadow.mapSize.x !== sm) { sun.shadow.mapSize.set(sm, sm); if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; } }
   scene.traverse(o => { if (o.material) { (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { m.needsUpdate = true; }); } });
   onResize();
@@ -2491,7 +2518,7 @@ function setupPost() {
     let target;
     if (renderer.capabilities.isWebGL2 && THREE.WebGLMultisampleRenderTarget) {   // wygładzanie MSAA także z efektami
       target = new THREE.WebGLMultisampleRenderTarget(W, H, { format: THREE.RGBAFormat, type: THREE.HalfFloatType });
-      target.samples = 4;
+      target.samples = set.gfx === 2 ? 4 : 2;
     }
     composer = new THREE.EffectComposer(renderer, target);
     composer.addPass(makeMultiViewPass());
@@ -2557,7 +2584,7 @@ function render(dt) {
   const H = window.innerHeight;
   for (const v of views) { v.cam.aspect = v.w / v.h; v.cam.updateProjectionMatrix(); }
   let drawn = false;
-  if (composer && set.gfx !== 1) {
+  if (composer && !lowFx()) {
     try { updatePost(dt); composer.render(dt); drawn = true; } catch (e) { composer = null; }   // przy błędzie – zwykłe rysowanie
   }
   if (!drawn) {
@@ -2822,7 +2849,7 @@ function buildStadium(got) {
     }
     if (got.treeLarge) for (let i = 0; i < 34; i++) {
       const a = i / 34 * Math.PI * 2 + rand(-0.06, 0.06), r = rand(92, 120), t = got.treeLarge.scene.clone(true);
-      t.scale.setScalar(rand(7, 11)); t.position.set(Math.sin(a) * r * 0.85, 0, Math.cos(a) * r); t.rotation.y = rand(0, 6.28); grp.add(t);
+      t.traverse(m => { if (m.isMesh) m.castShadow = false; }); t.scale.setScalar(rand(7, 11)); t.position.set(Math.sin(a) * r * 0.85, 0, Math.cos(a) * r); t.rotation.y = rand(0, 6.28); grp.add(t);
     }
     scene.add(grp);
     // kibice
@@ -2856,7 +2883,7 @@ function buildStadium(got) {
   } catch (e) { console.warn('stadion', e); }
 }
 function updateNewCrowd(t) {
-  const N = newCrowd, half = set.gfx === 1;
+  const N = newCrowd, half = lowFx();
   for (const s of N.spots) {
     const j = Math.abs(Math.sin(t * 9 + s.ph)) * 0.9 * cheer + 0.05 * Math.abs(Math.sin(t * 2 + s.ph));
     N.p.set(s.x, s.y + j, s.z); N.q.setFromAxisAngle(N.up, s.rot + (cheer > 0.05 ? Math.sin(t * 6 + s.ph) * 0.3 * cheer : 0));
@@ -2934,8 +2961,8 @@ const ttRing = new THREE.Mesh(new THREE.TorusGeometry(4.25, 0.09, 8, 80), new TH
 ttRing.rotation.x = Math.PI / 2; ttRing.position.set(0, 0.36, GZ); ttRing.visible = false; scene.add(ttRing);
 /* ---- gablota na resoraki: światła, LED na krawędzi platformy, snop światła ---- */
 const GAZ = Math.atan2(8.2, -8);   // kierunek: od platformy do kamery
-const showSpot = new THREE.SpotLight(0xfff1dc, 0, 34, 0.5, 0.65, 1); showSpot.position.set(0, 14, GZ + 1.5); showSpot.target.position.set(0, 0.5, GZ); scene.add(showSpot); scene.add(showSpot.target);
-const showRim = new THREE.DirectionalLight(0x9fd0ff, 0); showRim.position.set(-Math.sin(GAZ) * 10, 7, GZ - Math.cos(GAZ) * 10); showRim.target.position.set(0, 0.8, GZ); scene.add(showRim); scene.add(showRim.target);
+const showSpot = new THREE.SpotLight(0xfff1dc, 0, 34, 0.5, 0.65, 1); showSpot.position.set(0, 14, GZ + 1.5); showSpot.target.position.set(0, 0.5, GZ); showSpot.visible = false; scene.add(showSpot); scene.add(showSpot.target);
+const showRim = new THREE.DirectionalLight(0x9fd0ff, 0); showRim.position.set(-Math.sin(GAZ) * 10, 7, GZ - Math.cos(GAZ) * 10); showRim.target.position.set(0, 0.8, GZ); showRim.visible = false; scene.add(showRim); scene.add(showRim.target);
 const gLedTex = (() => {
   const c = document.createElement('canvas'); c.width = 256; c.height = 8; const g = c.getContext('2d');
   for (let i = 0; i < 8; i++) { const x = i * 32, gr = g.createLinearGradient(x, 0, x + 32, 0); gr.addColorStop(0, 'rgba(90,209,255,0)'); gr.addColorStop(0.75, 'rgba(120,220,255,0.9)'); gr.addColorStop(0.86, 'rgba(255,255,255,1)'); gr.addColorStop(1, 'rgba(90,209,255,0)'); g.fillStyle = gr; g.fillRect(x, 0, 32, 8); }
@@ -2955,7 +2982,7 @@ const ttBeam = new THREE.Mesh(new THREE.ConeGeometry(4.8, 13, 48, 1, true), addM
 ttBeam.position.set(0, 6.8, GZ); ttBeam.visible = false; scene.add(ttBeam);
 function setShowcase(v) {
   turntable.visible = ttRing.visible = ttLed.visible = ttHalo.visible = ttBeam.visible = v;
-  showSpot.intensity = v ? 0.75 : 0; showRim.intensity = v ? 0.8 : 0;
+  showSpot.intensity = v ? 0.75 : 0; showRim.intensity = v ? 0.8 : 0; showSpot.visible = showRim.visible = v;
   if (!v) { abortUnbox(); }
 }
 // kamera gabloty: każde auto i zakładka ma swój „kąt pokazowy”
@@ -3290,7 +3317,8 @@ function openMainMenu(focus) {
     top: '<div class="logo">TURBO <span class="hl">PIŁKA.</span></div><div style="display:flex;gap:8px">' + (installEvt ? '<div class="starchip" id="installBtn" style="margin:0;cursor:pointer;pointer-events:auto;background:linear-gradient(135deg,#ff9f1c,#ff5e3a)">📲 ZAINSTALUJ</div>' : '') + '<div class="starchip" id="voiceBtn" style="margin:0;cursor:pointer;pointer-events:auto" title="Lektor">' + (set.voice === 3 ? '🔇 LEKTOR' : '🗣️ LEKTOR') + '</div><div class="starchip" style="margin:0">⭐ ' + garage.stars + '</div></div>',
     footer: settingsOpen ? '<div class="keys">PAD: gałka = jedź · A = skok (2× w powietrzu = salto) · B/X/RB = turbo · LB = klakson · Y = kamera na piłkę · START = pauza<br>' +
       'KLAWIATURA: gracz 1 W A S D, spacja, lewy Shift, H = klakson · gracz 2 strzałki, Enter, prawy Shift, / = klakson · Esc = pauza<br>' +
-      '🔊 Głos lektora: ' + voiceName() + (VOICES.length && !/natural|online|google/i.test(voiceName()) ? ' · najładniej brzmi w przeglądarce Edge (głos Zofia) albo Chrome' : '') + '</div>' : ''
+      '🖥️ Karta graficzna: ' + gpuShort() + ' · ' + Math.round(perf.fps) + ' kl./s' + (set.gfx === 3 ? ' · ostrość ' + Math.round(perf.scale * 100) + '%' + (perf.lite ? ' · bez efektów' : '') : '') + '<br>' +
+      '🔊 Głos lektora: ' + voiceName() + (VOICES.length && !/natural|online|google/i.test(voiceName()) ? ' · najładniej brzmi w przeglądarce Edge (głos Zofia) albo Chrome' : '') + '</div>' + GPU_WARN : GPU_WARN
   });
   if (focus) { ui.focus = Math.min(focus, ui.items.length - 1); refreshUI(); }
   updatePlayTile();
@@ -3328,7 +3356,7 @@ function loop(now) {
   }
   const bsave = [ball.x, ball.y, ball.z];
   if (ball.px !== undefined) { ball.x = ball.px + (ball.x - ball.px) * a; ball.y = ball.py + (ball.y - ball.py) * a; ball.z = ball.pz + (ball.z - ball.pz) * a; }
-  frameUpdate(dt); syncMeshes(dt); render(dt);
+  perfTick(dt); frameUpdate(dt); syncMeshes(dt); render(dt);
   for (const r of interp) { r[0].x = r[1]; r[0].y = r[2]; r[0].z = r[3]; r[0].yaw = r[4]; }
   ball.x = bsave[0]; ball.y = bsave[1]; ball.z = bsave[2];
   if (AC) {

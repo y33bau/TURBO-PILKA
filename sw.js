@@ -1,5 +1,5 @@
 // Turbo Piłka – service worker: gra instaluje się jak aplikacja i działa też bez internetu.
-const CACHE = 'turbo-pilka-v2';
+const CACHE = 'turbo-pilka-v3';
 const CORE = [
   './',
   './index.html',
